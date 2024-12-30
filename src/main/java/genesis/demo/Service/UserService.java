@@ -2,6 +2,8 @@ package genesis.demo.Service;
 
 import genesis.demo.Model.User;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import java.io.BufferedReader;
@@ -14,6 +16,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.dao.EmptyResultDataAccessException;
 
 @Service
 public class UserService {
@@ -44,9 +47,11 @@ public class UserService {
         return count != null && count == 1;
     }
 
-    public User createUser(User user) {
-
+    public ResponseEntity<Object> createUser(User user) {
         boolean isInFile = isPersonIDInTextFile(user.getPersonID(), "src/main/resources/DataPersonId.txt");
+        if (!isInFile){
+            return new ResponseEntity<>("Person ID is not valid", HttpStatus.NOT_ACCEPTABLE);
+        }
         boolean isInDatabase = isPersonIDInDatabase(user.getPersonID());
         if (isInFile && !isInDatabase) {
 
@@ -69,16 +74,16 @@ public class UserService {
             if (generatedId != null) {
                 user.setId(generatedId.toString());
             }
-            return user;
+            return ResponseEntity.ok(user);
         }
-        return null;
+        return new ResponseEntity<>("User with entered Person ID already exists", HttpStatus.NOT_ACCEPTABLE);
     }
 
     private String generateUUID() {
         return java.util.UUID.randomUUID().toString();
     }
 
-    public User getUserById(int id, boolean detail) {
+    public ResponseEntity<Object> getUserById(int id, boolean detail) {
         String sql = "SELECT * FROM genesis_resources_registration_system.usersGR WHERE id = " + id;
         try {
             User user = jdbcTemplate.queryForObject(sql, new RowMapper<User>() {
@@ -94,9 +99,11 @@ public class UserService {
                     return user;
                 }
             });
-            return user;
+            return ResponseEntity.ok(user);
+        } catch (EmptyResultDataAccessException e) {
+            return ResponseEntity.status(404).body("Entered ID does not exist");
         } catch (Exception e) {
-            return null;
+            return ResponseEntity.status(500).body("An error occurred while processing your request");
         }
     }
 
@@ -118,7 +125,7 @@ public class UserService {
         return out;
     }
 
-    public User updateUser(User updatedUser) {
+    public ResponseEntity<Object> updateUser(User updatedUser) {
         String sql = "UPDATE genesis_resources_registration_system.usersGR SET Name = ?, Surname = ? WHERE ID = ?";
         int rowsAffected = jdbcTemplate.update(
                 sql,
@@ -127,13 +134,13 @@ public class UserService {
                 updatedUser.getId()
         );
         if (rowsAffected > 0) {
-            return updatedUser;
+            return ResponseEntity.ok(updatedUser);
         } else {
-            return null;
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("The user does not exist.");
         }
     }
 
-    public User deleteUserById(String id) {
+    public ResponseEntity<Object> deleteUserById(String id) {
         String selectSql = "SELECT * FROM genesis_resources_registration_system.usersGR WHERE ID = ?";
         try {
             User user = jdbcTemplate.queryForObject(selectSql, new Object[]{id}, (result, rowNum) -> {
@@ -147,9 +154,11 @@ public class UserService {
             });
             String deleteSql = "DELETE FROM genesis_resources_registration_system.usersGR WHERE ID = ?";
             jdbcTemplate.update(deleteSql, id);
-            return null;
+            return ResponseEntity.ok("The user has been deleted");
+        } catch (EmptyResultDataAccessException e) {
+            return ResponseEntity.status(404).body("Entered ID does not exist");
         } catch (Exception e) {
-            return null;
+            return ResponseEntity.status(500).body("An error occurred while processing your request");
         }
     }
 }
